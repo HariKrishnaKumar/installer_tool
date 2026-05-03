@@ -1,21 +1,30 @@
 # ================================
-#   GUI INSTALLER (FINAL FIXED)
+#   GUI INSTALLER (FINAL STABLE)
 # ================================
 
-# ---- ADMIN CHECK (SINGLE LINE - SAFE) ----
-if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Start-Process powershell -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -Command `"irm https://raw.githubusercontent.com/HariKrishnaKumar/installer_tool/main/install_gui.ps1 | iex`""
+# ---- ADMIN CHECK (LOCAL + IRM SAFE) ----
+$IsAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+if (-not $IsAdmin) {
+    if ($PSCommandPath) {
+        Start-Process powershell -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -File `"$PSCommandPath`""
+    } else {
+        $url = "https://raw.githubusercontent.com/HariKrishnaKumar/installer_tool/main/install_gui.ps1"
+        Start-Process powershell -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -Command `"irm $url | iex`""
+    }
     exit
 }
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
+# ---- FORM ----
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Software Installer"
 $form.Size = New-Object System.Drawing.Size(500,550)
 $form.StartPosition = "CenterScreen"
 
+# ---- UI ----
 $listBox = New-Object System.Windows.Forms.CheckedListBox
 $listBox.Size = New-Object System.Drawing.Size(440,250)
 $listBox.Location = New-Object System.Drawing.Point(20,20)
@@ -41,6 +50,7 @@ $exitBtn.Text = "Exit"
 $exitBtn.Size = New-Object System.Drawing.Size(150,40)
 $exitBtn.Location = New-Object System.Drawing.Point(260,440)
 
+# ---- APPS ----
 $apps = @(
     @{ name="Python"; type="exe"; url="https://github.com/HariKrishnaKumar/software_bca/releases/download/v1.0/python-3.13.2-amd64.exe"; args="/quiet InstallAllUsers=1 PrependPath=1" },
     @{ name="VS Code"; type="exe"; url="https://github.com/HariKrishnaKumar/software_bca/releases/download/v1.0/VSCodeUserSetup-x64-1.97.0.exe"; args="/silent" },
@@ -54,10 +64,11 @@ $apps = @(
 
 foreach ($app in $apps) { [void]$listBox.Items.Add($app.name) }
 
+# ---- BACKGROUND WORKER ----
 $worker = New-Object System.ComponentModel.BackgroundWorker
 $worker.WorkerReportsProgress = $true
 
-Register-ObjectEvent $worker DoWork -Action {
+Register-ObjectEvent -InputObject $worker -EventName DoWork -Action {
     $sel = $Event.SourceEventArgs.Argument
     $temp = "$env:TEMP\installer"
     New-Item -ItemType Directory -Force -Path $temp | Out-Null
@@ -70,13 +81,17 @@ Register-ObjectEvent $worker DoWork -Action {
         $count++
 
         $ext = ($app.url.Split('.')[-1]).Split('?')[0]
-        $name = $app.name -replace '[^a-zA-Z0-9]', '_'
-        $file = "$temp\$name.$ext"
+        $safe = $app.name -replace '[^a-zA-Z0-9]', '_'
+        $file = "$temp\$safe.$ext"
 
         $Event.Sender.ReportProgress(($count/$total)*100, "Downloading $($app.name)...")
 
-        try { Invoke-WebRequest $app.url -OutFile $file -ErrorAction Stop }
-        catch { $Event.Sender.ReportProgress(($count/$total)*100, "FAILED download: $($app.name)"); continue }
+        try {
+            Invoke-WebRequest -Uri $app.url -OutFile $file -ErrorAction Stop
+        } catch {
+            $Event.Sender.ReportProgress(($count/$total)*100, "FAILED download: $($app.name)")
+            continue
+        }
 
         $Event.Sender.ReportProgress(($count/$total)*100, "Installing $($app.name)...")
 
@@ -95,16 +110,17 @@ Register-ObjectEvent $worker DoWork -Action {
     }
 }
 
-Register-ObjectEvent $worker ProgressChanged -Action {
+Register-ObjectEvent -InputObject $worker -EventName ProgressChanged -Action {
     $progressBar.Value = [int]$Event.SourceEventArgs.ProgressPercentage
     $statusBox.AppendText($Event.SourceEventArgs.UserState + "`r`n")
 }
 
-Register-ObjectEvent $worker RunWorkerCompleted -Action {
+Register-ObjectEvent -InputObject $worker -EventName RunWorkerCompleted -Action {
     $installBtn.Enabled = $true
     $statusBox.AppendText("`r`n=== COMPLETED ===`r`n")
 }
 
+# ---- BUTTONS ----
 $installBtn.Add_Click({
     if ($listBox.CheckedIndices.Count -eq 0) {
         [System.Windows.Forms.MessageBox]::Show("Select at least one software")
