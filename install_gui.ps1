@@ -1,13 +1,26 @@
+# ================================
+#   GUI INSTALLER (STABLE FINAL)
+# ================================
+
+# ---- ADMIN CHECK (IRM SAFE) ----
+if (-not ([Security.Principal.WindowsPrincipal] 
+    [Security.Principal.WindowsIdentity]::GetCurrent()
+).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+
+    Start-Process powershell -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -Command `"irm https://raw.githubusercontent.com/HariKrishnaKumar/installer_tool/main/install_gui.ps1 | iex`""
+    exit
+}
+
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-# ---- Form ----
+# ---- FORM ----
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Software Installer"
 $form.Size = New-Object System.Drawing.Size(500,550)
 $form.StartPosition = "CenterScreen"
 
-# ---- UI ----
+# ---- UI ELEMENTS ----
 $listBox = New-Object System.Windows.Forms.CheckedListBox
 $listBox.Size = New-Object System.Drawing.Size(440,250)
 $listBox.Location = New-Object System.Drawing.Point(20,20)
@@ -33,7 +46,7 @@ $exitBtn.Text = "Exit"
 $exitBtn.Size = New-Object System.Drawing.Size(150,40)
 $exitBtn.Location = New-Object System.Drawing.Point(260,440)
 
-# ---- Apps ----
+# ---- SOFTWARE LIST ----
 $apps = @(
     @{ name="Python"; type="exe"; url="https://github.com/HariKrishnaKumar/software_bca/releases/download/v1.0/python-3.13.2-amd64.exe"; args="/quiet InstallAllUsers=1 PrependPath=1" },
     @{ name="VS Code"; type="exe"; url="https://github.com/HariKrishnaKumar/software_bca/releases/download/v1.0/VSCodeUserSetup-x64-1.97.0.exe"; args="/silent" },
@@ -49,7 +62,7 @@ foreach ($app in $apps) {
     [void]$listBox.Items.Add($app.name)
 }
 
-# ---- BackgroundWorker ----
+# ---- BACKGROUND WORKER ----
 $worker = New-Object System.ComponentModel.BackgroundWorker
 $worker.WorkerReportsProgress = $true
 
@@ -63,7 +76,6 @@ Register-ObjectEvent $worker DoWork -Action {
     $count = 0
 
     foreach ($i in $selected) {
-
         $app = $apps[$i]
         $count++
 
@@ -111,7 +123,6 @@ Register-ObjectEvent $worker RunWorkerCompleted -Action {
 
 # ---- INSTALL BUTTON ----
 $installBtn.Add_Click({
-
     if ($listBox.CheckedIndices.Count -eq 0) {
         [System.Windows.Forms.MessageBox]::Show("Select at least one software")
         return
