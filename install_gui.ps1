@@ -7,12 +7,11 @@ $form.Text = "Software Installer"
 $form.Size = New-Object System.Drawing.Size(500,550)
 $form.StartPosition = "CenterScreen"
 
-# ---- List ----
+# ---- UI ----
 $listBox = New-Object System.Windows.Forms.CheckedListBox
 $listBox.Size = New-Object System.Drawing.Size(440,250)
 $listBox.Location = New-Object System.Drawing.Point(20,20)
 
-# ---- Status Box ----
 $statusBox = New-Object System.Windows.Forms.TextBox
 $statusBox.Multiline = $true
 $statusBox.ReadOnly = $true
@@ -20,12 +19,10 @@ $statusBox.ScrollBars = "Vertical"
 $statusBox.Size = New-Object System.Drawing.Size(440,120)
 $statusBox.Location = New-Object System.Drawing.Point(20,280)
 
-# ---- Progress Bar ----
 $progressBar = New-Object System.Windows.Forms.ProgressBar
 $progressBar.Size = New-Object System.Drawing.Size(440,20)
 $progressBar.Location = New-Object System.Drawing.Point(20,410)
 
-# ---- Buttons ----
 $installBtn = New-Object System.Windows.Forms.Button
 $installBtn.Text = "Install Selected"
 $installBtn.Size = New-Object System.Drawing.Size(150,40)
@@ -48,45 +45,42 @@ $apps = @(
     @{ name="Turbo C++"; type="msi"; url="https://github.com/HariKrishnaKumar/software_bca/releases/download/v1.0/Turbo.C++.3.2.msi" }
 )
 
-# Add items
 foreach ($app in $apps) {
     [void]$listBox.Items.Add($app.name)
 }
 
-# ---- Background Worker (NO UI FREEZE) ----
+# ---- BackgroundWorker ----
 $worker = New-Object System.ComponentModel.BackgroundWorker
 $worker.WorkerReportsProgress = $true
 
-$worker.DoWork += {
-    param($sender, $e)
-
+# ---- DO WORK ----
+Register-ObjectEvent $worker DoWork -Action {
+    $selected = $Event.SourceEventArgs.Argument
     $temp = "$env:TEMP\installer"
     New-Item -ItemType Directory -Force -Path $temp | Out-Null
 
-    $selectedIndexes = $e.Argument
-    $total = $selectedIndexes.Count
+    $total = $selected.Count
     $count = 0
 
-    foreach ($index in $selectedIndexes) {
+    foreach ($i in $selected) {
 
-        $app = $apps[$index]
+        $app = $apps[$i]
         $count++
-
-        $sender.ReportProgress(($count / $total) * 100, "Downloading $($app.name)...")
 
         $ext = ($app.url.Split('.')[-1]).Split('?')[0]
         $safeName = $app.name -replace '[^a-zA-Z0-9]', '_'
         $file = "$temp\$safeName.$ext"
 
+        $Event.Sender.ReportProgress(($count/$total)*100, "Downloading $($app.name)...")
+
         try {
             Invoke-WebRequest -Uri $app.url -OutFile $file -ErrorAction Stop
-        }
-        catch {
-            $sender.ReportProgress(($count / $total) * 100, "FAILED download: $($app.name)")
+        } catch {
+            $Event.Sender.ReportProgress(($count/$total)*100, "FAILED download: $($app.name)")
             continue
         }
 
-        $sender.ReportProgress(($count / $total) * 100, "Installing $($app.name)...")
+        $Event.Sender.ReportProgress(($count/$total)*100, "Installing $($app.name)...")
 
         try {
             if ($ext -eq "msi") {
@@ -94,29 +88,28 @@ $worker.DoWork += {
             } else {
                 Start-Process $file -ArgumentList $app.args -Wait
             }
-        }
-        catch {
-            $sender.ReportProgress(($count / $total) * 100, "FAILED install: $($app.name)")
+        } catch {
+            $Event.Sender.ReportProgress(($count/$total)*100, "FAILED install: $($app.name)")
             continue
         }
 
-        $sender.ReportProgress(($count / $total) * 100, "DONE: $($app.name)")
+        $Event.Sender.ReportProgress(($count/$total)*100, "DONE: $($app.name)")
     }
 }
 
-$worker.ProgressChanged += {
-    param($sender, $e)
-
-    $progressBar.Value = [int]$e.ProgressPercentage
-    $statusBox.AppendText($e.UserState + "`r`n")
+# ---- PROGRESS ----
+Register-ObjectEvent $worker ProgressChanged -Action {
+    $progressBar.Value = [int]$Event.SourceEventArgs.ProgressPercentage
+    $statusBox.AppendText($Event.SourceEventArgs.UserState + "`r`n")
 }
 
-$worker.RunWorkerCompleted += {
+# ---- COMPLETED ----
+Register-ObjectEvent $worker RunWorkerCompleted -Action {
     $installBtn.Enabled = $true
-    $statusBox.AppendText("`r`n=== ALL TASKS COMPLETED ===`r`n")
+    $statusBox.AppendText("`r`n=== COMPLETED ===`r`n")
 }
 
-# ---- Install Button ----
+# ---- INSTALL BUTTON ----
 $installBtn.Add_Click({
 
     if ($listBox.CheckedIndices.Count -eq 0) {
@@ -134,15 +127,13 @@ $installBtn.Add_Click({
     $worker.RunWorkerAsync($selected)
 })
 
-# ---- Exit ----
+# ---- EXIT ----
 $exitBtn.Add_Click({ $form.Close() })
 
-# ---- Add Controls ----
 $form.Controls.Add($listBox)
 $form.Controls.Add($statusBox)
 $form.Controls.Add($progressBar)
 $form.Controls.Add($installBtn)
 $form.Controls.Add($exitBtn)
 
-# ---- Run ----
 $form.ShowDialog()
