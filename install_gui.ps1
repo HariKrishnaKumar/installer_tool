@@ -1,12 +1,9 @@
 # ================================
-#   GUI INSTALLER (STABLE FINAL)
+#   GUI INSTALLER (FINAL STABLE)
 # ================================
 
-# ---- ADMIN CHECK (IRM SAFE) ----
-if (-not ([Security.Principal.WindowsPrincipal] 
-    [Security.Principal.WindowsIdentity]::GetCurrent()
-).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-
+# ---- ADMIN CHECK (SAFE FOR IRM) ----
+if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Start-Process powershell -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -Command `"irm https://raw.githubusercontent.com/HariKrishnaKumar/installer_tool/main/install_gui.ps1 | iex`""
     exit
 }
@@ -20,7 +17,7 @@ $form.Text = "Software Installer"
 $form.Size = New-Object System.Drawing.Size(500,550)
 $form.StartPosition = "CenterScreen"
 
-# ---- UI ELEMENTS ----
+# ---- UI ----
 $listBox = New-Object System.Windows.Forms.CheckedListBox
 $listBox.Size = New-Object System.Drawing.Size(440,250)
 $listBox.Location = New-Object System.Drawing.Point(20,20)
@@ -46,7 +43,7 @@ $exitBtn.Text = "Exit"
 $exitBtn.Size = New-Object System.Drawing.Size(150,40)
 $exitBtn.Location = New-Object System.Drawing.Point(260,440)
 
-# ---- SOFTWARE LIST ----
+# ---- APPS ----
 $apps = @(
     @{ name="Python"; type="exe"; url="https://github.com/HariKrishnaKumar/software_bca/releases/download/v1.0/python-3.13.2-amd64.exe"; args="/quiet InstallAllUsers=1 PrependPath=1" },
     @{ name="VS Code"; type="exe"; url="https://github.com/HariKrishnaKumar/software_bca/releases/download/v1.0/VSCodeUserSetup-x64-1.97.0.exe"; args="/silent" },
@@ -62,12 +59,12 @@ foreach ($app in $apps) {
     [void]$listBox.Items.Add($app.name)
 }
 
-# ---- BACKGROUND WORKER ----
+# ---- WORKER ----
 $worker = New-Object System.ComponentModel.BackgroundWorker
 $worker.WorkerReportsProgress = $true
 
-# ---- DO WORK ----
-Register-ObjectEvent $worker DoWork -Action {
+# DO WORK
+Register-ObjectEvent -InputObject $worker -EventName DoWork -Action {
     $selected = $Event.SourceEventArgs.Argument
     $temp = "$env:TEMP\installer"
     New-Item -ItemType Directory -Force -Path $temp | Out-Null
@@ -80,13 +77,13 @@ Register-ObjectEvent $worker DoWork -Action {
         $count++
 
         $ext = ($app.url.Split('.')[-1]).Split('?')[0]
-        $safeName = $app.name -replace '[^a-zA-Z0-9]', '_'
-        $file = "$temp\$safeName.$ext"
+        $safe = $app.name -replace '[^a-zA-Z0-9]', '_'
+        $file = "$temp\$safe.$ext"
 
         $Event.Sender.ReportProgress(($count/$total)*100, "Downloading $($app.name)...")
 
         try {
-            Invoke-WebRequest -Uri $app.url -OutFile $file -ErrorAction Stop
+            Invoke-WebRequest $app.url -OutFile $file -ErrorAction Stop
         } catch {
             $Event.Sender.ReportProgress(($count/$total)*100, "FAILED download: $($app.name)")
             continue
@@ -109,19 +106,19 @@ Register-ObjectEvent $worker DoWork -Action {
     }
 }
 
-# ---- PROGRESS ----
-Register-ObjectEvent $worker ProgressChanged -Action {
+# PROGRESS
+Register-ObjectEvent -InputObject $worker -EventName ProgressChanged -Action {
     $progressBar.Value = [int]$Event.SourceEventArgs.ProgressPercentage
     $statusBox.AppendText($Event.SourceEventArgs.UserState + "`r`n")
 }
 
-# ---- COMPLETED ----
-Register-ObjectEvent $worker RunWorkerCompleted -Action {
+# COMPLETE
+Register-ObjectEvent -InputObject $worker -EventName RunWorkerCompleted -Action {
     $installBtn.Enabled = $true
     $statusBox.AppendText("`r`n=== COMPLETED ===`r`n")
 }
 
-# ---- INSTALL BUTTON ----
+# BUTTON
 $installBtn.Add_Click({
     if ($listBox.CheckedIndices.Count -eq 0) {
         [System.Windows.Forms.MessageBox]::Show("Select at least one software")
@@ -132,13 +129,12 @@ $installBtn.Add_Click({
     $statusBox.Clear()
     $progressBar.Value = 0
 
-    $selected = @()
-    foreach ($i in $listBox.CheckedIndices) { $selected += $i }
+    $sel = @()
+    foreach ($i in $listBox.CheckedIndices) { $sel += $i }
 
-    $worker.RunWorkerAsync($selected)
+    $worker.RunWorkerAsync($sel)
 })
 
-# ---- EXIT ----
 $exitBtn.Add_Click({ $form.Close() })
 
 $form.Controls.Add($listBox)
