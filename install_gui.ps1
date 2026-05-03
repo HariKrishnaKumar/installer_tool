@@ -7,7 +7,7 @@ $form.Text = "Software Installer"
 $form.Size = New-Object System.Drawing.Size(450,500)
 $form.StartPosition = "CenterScreen"
 
-# ---- Checked List ----
+# ---- List ----
 $listBox = New-Object System.Windows.Forms.CheckedListBox
 $listBox.Size = New-Object System.Drawing.Size(400,300)
 $listBox.Location = New-Object System.Drawing.Point(20,20)
@@ -24,28 +24,30 @@ $apps = @(
     @{ name="Turbo C++"; type="msi"; url="https://github.com/HariKrishnaKumar/software_bca/releases/download/v1.0/Turbo.C++.3.2.msi" }
 )
 
-# Add names to UI
+# Add items
 foreach ($app in $apps) {
     [void]$listBox.Items.Add($app.name)
 }
 
-# ---- Install Button ----
+# ---- Buttons ----
 $installBtn = New-Object System.Windows.Forms.Button
 $installBtn.Text = "Install Selected"
 $installBtn.Size = New-Object System.Drawing.Size(150,40)
 $installBtn.Location = New-Object System.Drawing.Point(50,350)
 
-# ---- Exit Button ----
 $exitBtn = New-Object System.Windows.Forms.Button
 $exitBtn.Text = "Exit"
 $exitBtn.Size = New-Object System.Drawing.Size(150,40)
 $exitBtn.Location = New-Object System.Drawing.Point(230,350)
 
-# ---- Install Logic ----
+# ---- INSTALL LOGIC ----
 $installBtn.Add_Click({
 
     $temp = "$env:TEMP\installer"
     New-Item -ItemType Directory -Force -Path $temp | Out-Null
+
+    $success = @()
+    $failed = @()
 
     foreach ($index in $listBox.CheckedIndices) {
 
@@ -55,11 +57,25 @@ $installBtn.Add_Click({
         $safeName = $app.name -replace '[^a-zA-Z0-9]', '_'
         $file = "$temp\$safeName.$ext"
 
-        [System.Windows.Forms.MessageBox]::Show("Installing $($app.name)...")
+        # ---- DOWNLOAD (RETRY) ----
+        $downloaded = $false
+        for ($i=1; $i -le 2; $i++) {
+            try {
+                Invoke-WebRequest -Uri $app.url -OutFile $file -ErrorAction Stop
+                $downloaded = $true
+                break
+            }
+            catch {
+                if ($i -eq 2) {
+                    $failed += $app.name
+                }
+            }
+        }
 
+        if (-not $downloaded) { continue }
+
+        # ---- INSTALL ----
         try {
-            Invoke-WebRequest -Uri $app.url -OutFile $file -ErrorAction Stop
-
             if ($ext -eq "msi") {
                 Start-Process "msiexec.exe" -ArgumentList "/i `"$file`" /quiet /norestart" -Wait
             }
@@ -68,14 +84,49 @@ $installBtn.Add_Click({
             }
         }
         catch {
-            [System.Windows.Forms.MessageBox]::Show("Failed: $($app.name)")
+            $failed += $app.name
+            continue
         }
+
+        # ---- VERIFY ----
+        $installed = $true
+
+        if ($app.name -eq "Python") {
+            if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
+                $installed = $false
+            }
+        }
+
+        if (-not $installed) {
+            $failed += $app.name
+            continue
+        }
+
+        # ---- PATH FIX ----
+        if ($app.name -eq "Python") {
+            $pythonPath = "C:\Program Files\Python313"
+            if (Test-Path $pythonPath) {
+                $envPath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+                if ($envPath -notlike "*Python313*") {
+                    [Environment]::SetEnvironmentVariable(
+                        "Path",
+                        "$envPath;$pythonPath;$pythonPath\Scripts",
+                        "Machine"
+                    )
+                }
+            }
+        }
+
+        $success += $app.name
     }
 
-    [System.Windows.Forms.MessageBox]::Show("Installation Complete")
+    # ---- RESULT ----
+    $msg = "Installed:`n" + ($success -join "`n") + "`n`nFailed:`n" + ($failed -join "`n")
+    [System.Windows.Forms.MessageBox]::Show($msg, "Summary")
+
 })
 
-# ---- Exit Logic ----
+# ---- Exit ----
 $exitBtn.Add_Click({
     $form.Close()
 })
