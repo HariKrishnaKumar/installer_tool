@@ -1,4 +1,7 @@
-# ---- Download GUI Installer ----
+# ================================
+#   BOOTSTRAP SCRIPT
+# ================================
+
 $scriptUrl = "https://raw.githubusercontent.com/HariKrishnaKumar/installer_tool/main/install_gui.ps1"
 $tempFile = "$env:TEMP\install_gui.ps1"
 
