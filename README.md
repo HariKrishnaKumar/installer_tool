@@ -6,7 +6,7 @@ Run this single command in Windows PowerShell to launch the installer tool insta
 irm https://raw.githubusercontent.com/HariKrishnaKumar/installer_tool/main/install_gui.ps1 | iex
 ```
 
-##if any security error add this:
+## if any security error add this:
 
 Run this command in Windows PowerShell to launch the installer tool. It will automatically request Administrator privileges and bypass local execution policies.
 
